@@ -3,12 +3,14 @@ import logging
 import subprocess
 import time
 import pypandoc
+from docling.backend.mspowerpoint_backend import MsPowerpointDocumentBackend
 from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.pipeline.simple_pipeline import SimplePipeline
 from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.document_converter import DocumentConverter, PdfFormatOption, WordFormatOption
+from docling.document_converter import DocumentConverter, PdfFormatOption, WordFormatOption, \
+    ExcelFormatOption, PowerpointFormatOption, HTMLFormatOption, ImageFormatOption
 import torch
 import torchvision.transforms as transforms
 from transformers import SwinModel
@@ -39,7 +41,7 @@ def convert_markdown_to_html(markdown_file, html_file, css_file=None):
         extra_args.extend(['--css', css_file])
 
     try:
-        # Используем pypandoc.convert_file для создания HTML файла
+        # Using pypandoc.convert_file to create HTML file
         pypandoc.convert_file(
             markdown_file,
             'html',
@@ -47,7 +49,7 @@ def convert_markdown_to_html(markdown_file, html_file, css_file=None):
             extra_args=extra_args
         )
 
-        # Читаем HTML контент из созданного файла
+        # Read HTML content from the created file
         with open(html_file, 'r', encoding='utf-8') as f:
             html_content = f.read()
 
@@ -65,7 +67,7 @@ def convert_markdown_to_html(markdown_file, html_file, css_file=None):
 
 def save_html_to_file(html_content, html_file):
     """
-    Сохраняет HTML контент в файл.
+    Save HTML.
     """
     try:
         with open(html_file, "w", encoding="utf-8") as f:
@@ -140,7 +142,7 @@ def replace_char_in_links_bs4(html_file_path: Path, old_char: str, new_char: str
 def main():
     logging.basicConfig(level=logging.INFO)
 
-    input_doc_path = Path("input/Confirmation PAR Completed Scrubbed.pdf")
+    input_doc_path = Path("input/test.pptx")
 
     output_dir = Path("scratch")
 
@@ -153,10 +155,11 @@ def main():
         DocumentConverter(  # all of the below is optional, has internal defaults.
             allowed_formats=[
                 InputFormat.PDF,
-                InputFormat.IMAGE,
                 InputFormat.DOCX,
                 InputFormat.HTML,
                 InputFormat.PPTX,
+                InputFormat.XLSX,
+                InputFormat.IMAGE,
             ],  # whitelist formats, non-matching files are ignored.
             format_options={
                 InputFormat.PDF: PdfFormatOption(
@@ -165,6 +168,20 @@ def main():
                 ),
                 InputFormat.DOCX: WordFormatOption(
                     pipeline_cls=SimplePipeline  # default for office formats and HTML
+                ),
+                InputFormat.XLSX: ExcelFormatOption(
+                    pipeline_cls=SimplePipeline,  # pipeline options go here.
+                ),
+                InputFormat.PPTX: PowerpointFormatOption(
+                    pipeline_cls=SimplePipeline,  # pipeline options go here.
+                    backend=MsPowerpointDocumentBackend
+                ),
+                InputFormat.HTML: HTMLFormatOption(
+                    pipeline_cls=SimplePipeline,  # pipeline options go here.
+                ),
+                InputFormat.IMAGE: ImageFormatOption(
+                    pipeline_options=pipeline_options,  # pipeline options go here.
+                    backend=PyPdfiumDocumentBackend  # optional: pick an alternative backend
                 ),
             },
         )
@@ -182,7 +199,7 @@ def main():
     picture_counter = 0
 
     for element, _level in conv_res.document.iterate_items():
-        _log.debug(f"Element type: {type(element)}")  # Логируем тип element
+        _log.debug(f"Element type: {type(element)}")  # Logging element type
         if isinstance(element, TableItem):
             table_counter += 1
             element_image_filename = (
@@ -238,7 +255,7 @@ def main():
 
     replace_char_in_links_bs4(htmlFile, old_char, new_char, outputFile)
 
-    html_file_to_pdf = "scratch/Confirmation PAR Completed Scrubbed-with-image-refs_new.html"
+    html_file_to_pdf = f"scratch/{doc_filename}-with-image-refs_new.html"
     output_file_pdf = ("scratch/output.pdf")
 
     generate_pdf(
