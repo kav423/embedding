@@ -12,11 +12,25 @@ logging.basicConfig(level=logging.INFO)
 # Создание FastAPI приложения
 app = FastAPI()
 
+def cleanup_temp_files(temp_dir: Path):
+    """
+    Удаляет временную директорию и все её содержимое.
+    """
+    try:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+            _log.info(f"Temporary files in {temp_dir} deleted.")
+    except Exception as e:
+        _log.error(f"Error deleting temporary files: {e}")
+
 @app.post("/process-document/")
 async def process_document(file: UploadFile = File(...)):
     try:
         # Создаем временную директорию для обработки
         temp_dir = Path("temp")
+
+        # Очищаем временные файлы перед началом обработки
+        cleanup_temp_files(temp_dir)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
         # Сохраняем загруженный файл
@@ -25,21 +39,23 @@ async def process_document(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         # Вызываем основную логику обработки
-        result = main(input_doc_path)
+        result = main(input_doc_path, temp_dir)
 
-        # Возвращаем результат
-        return JSONResponse(content=result)
+        # Получаем путь к Markdown-файлу
+        md_file = temp_dir / f"{input_doc_path.stem}-with-image-refs.md"
+        if not md_file.exists():
+            raise HTTPException(status_code=500, detail="Markdown file not found.")
+
+        # Возвращаем Markdown-файл для скачивания
+        return FileResponse(
+            md_file,
+            media_type="text/markdown",
+            filename=md_file.name
+        )
 
     except Exception as e:
         _log.error(f"Error processing document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/download/{filename}")
-async def download_file(filename: str):
-    file_path = Path("temp") / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path, media_type="application/pdf", filename=filename)
 
 @app.get("/")
 async def root():
