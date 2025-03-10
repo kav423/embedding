@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from pathlib import Path
 import shutil
 import logging
+import pyzipper  # Используем pyzipper вместо zipfile
 from main import main  # Импортируем основную логику
 
 # Настройка логгера
@@ -23,6 +24,28 @@ def cleanup_temp_files(temp_dir: Path):
     except Exception as e:
         _log.error(f"Error deleting temporary files: {e}")
 
+def create_zip_from_directory(directory: Path, zip_path: Path):
+    """
+    Создает ZIP-архив с поддержкой ZIP64 с помощью pyzipper.
+    """
+    try:
+        allowed_extensions = {".md", ".html", ".pdf", ".png", ".npy"}
+        with pyzipper.AESZipFile(
+            zip_path,
+            'w',
+            compression=pyzipper.ZIP_DEFLATED,
+            allowZip64=True  # Включаем поддержку ZIP64
+        ) as zipf:
+            for file in directory.rglob("*"):
+                if file.is_file() and file.suffix.lower() in allowed_extensions:
+                    arcname = file.relative_to(directory)
+                    zipf.write(file, arcname)
+                    _log.info(f"Added {file} to ZIP archive.")
+        _log.info(f"ZIP archive created: {zip_path}")
+    except Exception as e:
+        _log.error(f"Error creating ZIP archive: {e}")
+        raise
+
 @app.post("/process-document/")
 async def process_document(file: UploadFile = File(...)):
     try:
@@ -41,16 +64,19 @@ async def process_document(file: UploadFile = File(...)):
         # Вызываем основную логику обработки
         result = main(input_doc_path, temp_dir)
 
-        # Получаем путь к Markdown-файлу
-        md_file = temp_dir / f"{input_doc_path.stem}-with-image-refs.md"
-        if not md_file.exists():
-            raise HTTPException(status_code=500, detail="Markdown file not found.")
+        # Создаем ZIP-архив с временными файлами
+        zip_path = temp_dir / "output.zip"
+        create_zip_from_directory(temp_dir, zip_path)
 
-        # Возвращаем Markdown-файл для скачивания
+        # Проверяем, что ZIP-архив создан
+        if not zip_path.exists():
+            raise HTTPException(status_code=500, detail="Failed to create ZIP archive.")
+
+        # Возвращаем ZIP-архив для скачивания
         return FileResponse(
-            md_file,
-            media_type="text/markdown",
-            filename=md_file.name
+            zip_path,
+            media_type="application/zip",
+            filename=zip_path.name
         )
 
     except Exception as e:

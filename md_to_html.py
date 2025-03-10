@@ -1,45 +1,61 @@
-import os
 import pypandoc
 import logging
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
 
-def convert_markdown_to_html(markdown_file: Path, html_file: Path, css_file: Path = None):
+
+def convert_markdown_to_html(markdown_file, html_file):
     """
-    Конвертирует Markdown в HTML с сохранением разделителей страниц.
+    Конвертирует Markdown в HTML с помощью pypandoc.
+    Встроенные CSS-стили добавляются для разрывов страниц.
     """
     if not markdown_file.exists():
         _log.error(f"Markdown file not found: {markdown_file}")
         return False
 
-    # Добавляем разделители страниц в Markdown
-    with open(markdown_file, "r", encoding="utf-8") as f:
-        markdown_content = f.read()
+    # Встроенные CSS-стили
+    css_styles = """
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+        }
 
-    # Заменяем разделители страниц на HTML-комментарии
-    markdown_content = markdown_content.replace("<!-- Page", "<div style='page-break-before: always;'></div><!-- Page")
+        h1 {
+            page-break-before: always; /* Начинать новую страницу перед каждым h1 */
+        }
 
-    # Сохраняем измененный Markdown
-    modified_markdown_file = markdown_file.with_name(f"{markdown_file.stem}_modified.md")
-    with open(modified_markdown_file, "w", encoding="utf-8") as f:
-        f.write(markdown_content)
+        h1:first-of-type {
+            page-break-before: avoid; /* Не начинать новую страницу перед первым h1 */
+        }
 
-    # Конвертируем Markdown в HTML
-    extra_args = ['-s']
-    if css_file:
-        if not css_file.exists():
-            _log.error(f"CSS file not found: {css_file}")
-            return False
-        extra_args.extend(['--css', str(css_file)])
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+    """
 
     try:
-        pypandoc.convert_file(
-            str(modified_markdown_file),
+        _log.info(f"Converting {markdown_file} to {html_file}")
+
+        # Конвертируем Markdown в HTML
+        html_content = pypandoc.convert_file(
+            str(markdown_file),
             'html',
-            outputfile=str(html_file),
-            extra_args=extra_args
+            format='md',
+            extra_args=['-s']  # standalone HTML
         )
+
+        # Добавляем встроенные CSS-стили
+        html_content = html_content.replace('</head>', f'{css_styles}</head>')
+
+        # Сохраняем HTML-файл
+        with open(html_file, 'w', encoding='utf-8') as f:
+            f.write(html_content)
+
         _log.info(f"Successfully converted {markdown_file} to {html_file}")
         return True
     except Exception as e:
