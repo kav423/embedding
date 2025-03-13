@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from document_to_md import convert_document_to_md
 from md_to_html import convert_markdown_to_html
-from html_to_pdf import generate_pdf, replace_char_in_links_bs4
+from html_to_pdf import generate_pdf
 from pdf_to_png import render_pdf_to_png
 from png_to_embeddings import process_images_for_embeddings
 from utils.file_processing import process_directory_png
@@ -11,7 +11,7 @@ _log = logging.getLogger(__name__)
 
 # Константы
 IMAGE_RESOLUTION_SCALE = 2.0
-WKHTMLTOPDF_PATH = "C:\\Program Files\\wkhtmltopdf\\bin\\wkhtmltopdf.exe"
+WKHTMLTOPDF_PATH = "D:\\wkhtmltox-0.12.6-1.mxe-cross-win64\\wkhtmltox\\bin\\wkhtmltopdf.exe"
 
 def main(input_doc_path: Path, temp_dir: Path):
     try:
