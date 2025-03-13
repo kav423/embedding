@@ -13,7 +13,10 @@ from docling.document_converter import DocumentConverter, PdfFormatOption, WordF
 
 _log = logging.getLogger(__name__)
 
-def convert_document_to_md(input_doc_path, output_dir, image_resolution_scale):
+def convert_document_to_md(input_doc_path, output_dir, image_resolution_scale=2.0, include_images=True):
+    """
+    Конвертирует документ в Markdown.
+    """
     pipeline_options = PdfPipelineOptions()
     pipeline_options.images_scale = image_resolution_scale
     pipeline_options.generate_page_images = True
@@ -89,11 +92,13 @@ def convert_document_to_md(input_doc_path, output_dir, image_resolution_scale):
             else:
                 print(f"Warning: No image found for picture {picture_counter}")
 
-    md_filename = output_dir / f"{doc_filename}-with-images.md"
-    conv_res.document.save_as_markdown(md_filename, image_mode=ImageRefMode.EMBEDDED)
-
-    md_filename = output_dir / f"{doc_filename}-with-image-refs.md"
-    conv_res.document.save_as_markdown(md_filename, image_mode=ImageRefMode.REFERENCED)
+    # Сохраняем Markdown с изображениями или без них
+    if include_images:
+        md_filename = output_dir / f"{doc_filename}-with-images.md"
+        conv_res.document.save_as_markdown(md_filename, image_mode=ImageRefMode.EMBEDDED)
+    else:
+        md_filename = output_dir / f"{doc_filename}-without-images.md"
+        conv_res.document.save_as_markdown(md_filename)
 
     end_time = time.time() - start_time
     _log.info(f"Document converted and figures exported in {end_time:.2f} seconds.")

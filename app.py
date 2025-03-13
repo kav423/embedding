@@ -1,10 +1,10 @@
-import pyzipper
-from fastapi import FastAPI, File, UploadFile, HTTPException, Response, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Response, Request, Query
 from fastapi.responses import JSONResponse, FileResponse
 from pathlib import Path
 import shutil
 import logging
 import uuid
+import pyzipper
 from document_to_md import convert_document_to_md
 from md_to_html import convert_markdown_to_html
 from html_to_pdf import generate_pdf
@@ -34,7 +34,11 @@ def cleanup_temp_files(temp_dir: Path):
         _log.error(f"Error deleting temporary files: {e}")
 
 @app.post("/upload-document/")
-async def upload_document(file: UploadFile = File(...), response: Response = None):
+async def upload_document(
+    file: UploadFile = File(...),
+    response: Response = None,
+    include_images: bool = Query(default=True, description="Include images in Markdown")
+):
     """
     Загружает документ и выполняет все этапы преобразования.
     """
@@ -52,30 +56,45 @@ async def upload_document(file: UploadFile = File(...), response: Response = Non
             shutil.copyfileobj(file.file, buffer)
 
         # 1. Конвертация документа в Markdown
-        md_file = convert_document_to_md(input_doc_path, temp_dir, image_resolution_scale=2.0)
+        _log.info("Starting document to Markdown conversion...")
+        md_file = convert_document_to_md(input_doc_path, temp_dir, image_resolution_scale=2.0, include_images=include_images)
         if not md_file:
             raise Exception("Failed to convert document to Markdown.")
+        _log.info(f"Markdown file created: {md_file}")
 
         # 2. Конвертация Markdown в HTML
+        _log.info("Starting Markdown to HTML conversion...")
         html_file = temp_dir / f"{input_doc_path.stem}-with-image-refs.html"
         if not convert_markdown_to_html(md_file, html_file):
             raise Exception("Failed to convert Markdown to HTML.")
+        _log.info(f"HTML file created: {html_file}")
 
         # 3. Конвертация HTML в PDF
+        _log.info("Starting HTML to PDF conversion...")
         pdf_file = temp_dir / "output.pdf"
         if not generate_pdf(html_file, pdf_file, wkhtmltopdf_path="D:\\wkhtmltox-0.12.6-1.mxe-cross-win64\\wkhtmltox\\bin\\wkhtmltopdf.exe"):
             raise Exception("Failed to convert HTML to PDF.")
+        _log.info(f"PDF file created: {pdf_file}")
 
         # 4. Рендеринг PDF в PNG
+        _log.info("Starting PDF to PNG rendering...")
         output_images_dir = temp_dir / "images"
         output_images_dir.mkdir(parents=True, exist_ok=True)
         if not render_pdf_to_png(pdf_file, output_images_dir):
             raise Exception("Failed to render PDF to PNG.")
+        _log.info(f"PNG images saved to: {output_images_dir}")
 
         # 5. Получение эмбеддингов из PNG
+        _log.info("Starting PNG to embeddings conversion...")
         output_embeddings_dir = temp_dir / "embeddings"
         output_embeddings_dir.mkdir(parents=True, exist_ok=True)
         process_images_for_embeddings(output_images_dir, output_embeddings_dir)
+        _log.info(f"Embeddings saved to: {output_embeddings_dir}")
+
+        # 6. Перемещение .npy файлов
+        _log.info("Moving .npy files...")
+        process_directory_png(output_images_dir, output_embeddings_dir)
+        _log.info(f".npy files moved to: {output_embeddings_dir}")
 
         # Сохраняем результаты в сессии
         sessions[session_id] = {
@@ -83,11 +102,13 @@ async def upload_document(file: UploadFile = File(...), response: Response = Non
             "html_file": html_file,
             "pdf_file": pdf_file,
             "images_dir": output_images_dir,
-            "embeddings_dir": output_embeddings_dir
+            "embeddings_dir": output_embeddings_dir,
+            "include_images": include_images
         }
 
         # Устанавливаем session_id в куки
         response.set_cookie(key="session_id", value=session_id)
+        _log.info(f"Session ID set in cookies: {session_id}")
 
         return {"status": "success", "message": "Document processed.", "session_id": session_id}
     except Exception as e:
@@ -102,6 +123,7 @@ async def get_md(request: Request):
     try:
         # Извлекаем session_id из куки
         session_id = request.cookies.get("session_id")
+        _log.info(f"Session ID from cookies: {session_id}")
         if not session_id:
             raise HTTPException(status_code=400, detail="Session ID not found in cookies.")
 
@@ -126,6 +148,7 @@ async def get_html(request: Request):
     try:
         # Извлекаем session_id из куки
         session_id = request.cookies.get("session_id")
+        _log.info(f"Session ID from cookies: {session_id}")
         if not session_id:
             raise HTTPException(status_code=400, detail="Session ID not found in cookies.")
 
@@ -150,6 +173,7 @@ async def get_pdf(request: Request):
     try:
         # Извлекаем session_id из куки
         session_id = request.cookies.get("session_id")
+        _log.info(f"Session ID from cookies: {session_id}")
         if not session_id:
             raise HTTPException(status_code=400, detail="Session ID not found in cookies.")
 
@@ -174,6 +198,7 @@ async def get_png(request: Request):
     try:
         # Извлекаем session_id из куки
         session_id = request.cookies.get("session_id")
+        _log.info(f"Session ID from cookies: {session_id}")
         if not session_id:
             raise HTTPException(status_code=400, detail="Session ID not found in cookies.")
 
@@ -204,6 +229,7 @@ async def get_embeddings(request: Request):
     try:
         # Извлекаем session_id из куки
         session_id = request.cookies.get("session_id")
+        _log.info(f"Session ID from cookies: {session_id}")
         if not session_id:
             raise HTTPException(status_code=400, detail="Session ID not found in cookies.")
 
